@@ -40,13 +40,13 @@ fn main() {
 }
 
 fn age_entities(entities: &mut Entities) {
-    for entity in entities.query().with::<Age>().iter() {
+    for entity in entities.with::<Age>().iter() {
         entity.get_mut::<Age>().unwrap().0 += 1;
     }
 }
 
 fn print_entities(entities: &mut Entities) {
-    for entity in entities.query().with::<&str>().iter() {
+    for entity in entities.with::<&str>().iter() {
         let name = entity.get::<&str>().unwrap();
 
         let age = entity

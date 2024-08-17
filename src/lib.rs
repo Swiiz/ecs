@@ -38,10 +38,6 @@ impl Entities {
     pub fn is_present(&self, entity: &EntityId) -> bool {
         self.entity_masks.contains(entity.index())
     }
-
-    pub fn query(&self) -> BitQuery {
-        BitQuery::new(self)
-    }
 }
 
 #[derive(Clone, Copy)]

@@ -31,7 +31,7 @@ pub struct BitQuery<'a> {
 }
 
 impl<'a> BitQuery<'a> {
-    pub fn new(ecs: &'a Entities) -> Self {
+    pub(crate) fn new(ecs: &'a Entities) -> Self {
         Self {
             ecs,
             included_mask: 0,
