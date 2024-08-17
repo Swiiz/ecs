@@ -90,10 +90,6 @@ impl<'a> EntityHandle<'a> {
         *self.mask_mut() &= !components.mask_of::<T>();
     }
 
-    pub fn has<T: 'static>(&self) -> bool {
-        self.ecs.components.mask_of::<T>() & self.mask() != 0
-    }
-
     pub fn despawn(&mut self, entity: &EntityId) {
         if let Some(mask) = self.ecs.entity_masks.remove(entity.0) {
             self.ecs.components.remove_all(mask, entity.spatial());
