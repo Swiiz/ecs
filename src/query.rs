@@ -51,13 +51,13 @@ impl<'a> BitQuery<'a> {
 }
 
 impl Entities {
-    pub fn with<T: 'static>(&mut self) -> BitQuery<'_> {
+    pub fn with<T: 'static>(&self) -> BitQuery<'_> {
         let mut q = BitQuery::new(self);
         q.with::<T>();
         q
     }
 
-    pub fn without<T: 'static>(&mut self) -> BitQuery<'_> {
+    pub fn without<T: 'static>(&self) -> BitQuery<'_> {
         let mut q = BitQuery::new(self);
         q.without::<T>();
         q

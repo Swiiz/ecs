@@ -11,20 +11,17 @@ fn main() {
     assert!(a.get::<&str>().is_some());
     assert!(a.get::<Age>().is_none());
 
-    let mut b = entities.spawn();
-    b.set("Entity B");
-    b.set(Age(10));
-
-    assert!(b.get::<&str>().is_some());
-    assert!(b.get::<Age>().is_some());
+    entities.spawn().set("Entity B").set(Age(10));
 
     let mut c = entities.spawn();
     c.set(Age(20));
 
-    let unamed_entity_id = c.id();
-
     assert!(c.get::<&str>().is_none());
     assert!(c.get::<Age>().is_some());
+
+    let unamed_entity_id = c.id();
+
+    // "c" is dropped here
 
     for _ in 0..5 {
         age_entities(&mut entities);

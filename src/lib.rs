@@ -70,13 +70,15 @@ impl<'a> EntityHandle<'a> {
             .expect("Entity not present")
     }
 
-    pub fn set<T: 'static>(&mut self, component: T) {
+    pub fn set<T: 'static>(&mut self, component: T) -> &mut Self {
         let components = &mut self.ecs.components;
         components.lazy_register::<T>();
         components
             .borrow_storage_mut_of::<T>()
             .set(self.id.spatial(), component);
         *self.mask_mut() |= components.mask_of::<T>();
+
+        self
     }
 
     pub fn remove<T: 'static>(&mut self, entity: &EntityId) {
