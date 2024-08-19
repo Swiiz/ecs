@@ -2,7 +2,6 @@ use std::cell::{Ref, RefMut};
 
 use components::{Components, ComponentsMask};
 use generational_arena::{Arena, Index};
-use query::BitQuery;
 
 mod components;
 mod query;
