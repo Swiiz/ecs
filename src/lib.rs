@@ -6,7 +6,10 @@ use generational_arena::{Arena, Index};
 mod components;
 mod query;
 
+pub mod serde;
+
 pub use query::Query;
+use serde::{ComponentSelection, EcsState};
 
 pub struct Entities {
     pub(crate) entity_masks: Arena<ComponentsMask>,
@@ -36,6 +39,20 @@ impl Entities {
 
     pub fn is_present(&self, entity: &EntityId) -> bool {
         self.entity_masks.contains(entity.index())
+    }
+
+    pub fn save<S: ComponentSelection>(&self) -> EcsState<S> {
+        EcsState {
+            entity_masks: self.entity_masks.clone(),
+            components: S::save_columns(&self.components),
+        }
+    }
+
+    pub fn load<S: ComponentSelection>(state: EcsState<S>) -> Self {
+        Self {
+            entity_masks: state.entity_masks,
+            components: S::load_columns(state.components),
+        }
     }
 }
 

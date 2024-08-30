@@ -4,14 +4,19 @@ use std::{
     collections::HashMap,
 };
 
+use serde::{Deserialize, Serialize};
+
 pub const COMPONENTS_MASK_SIZE: usize = 64;
 pub type ComponentsMask = u64;
 
 pub struct Components {
     component_masks: HashMap<TypeId, (usize, ComponentsMask)>,
     next_component_mask: ComponentsMask,
-    columns: Vec<RefCell<Box<dyn ComponentsColumn>>>,
+
+    columns: Vec<RefCell<Column>>,
 }
+
+struct Column(Box<dyn ComponentsColumn>);
 
 impl Components {
     pub fn new() -> Self {
@@ -22,7 +27,7 @@ impl Components {
         }
     }
 
-    pub fn lazy_register<T: 'static>(&mut self) {
+    pub fn insert_column<T: 'static>(&mut self, storage: SparseSet<T>) {
         if self.component_masks.contains_key(&TypeId::of::<T>()) {
             return;
         }
@@ -31,8 +36,11 @@ impl Components {
         self.next_component_mask <<= 1;
         self.component_masks
             .insert(TypeId::of::<T>(), (self.component_masks.len(), new_mask));
-        self.columns
-            .push(RefCell::new(Box::new(SparseSet::<T>::new())));
+        self.columns.push(RefCell::new(Column(Box::new(storage))));
+    }
+
+    pub fn lazy_register<T: 'static>(&mut self) {
+        self.insert_column(SparseSet::<T>::new());
     }
 
     pub fn borrow_storage_of<T: 'static>(&self) -> Ref<SparseSet<T>> {
@@ -46,7 +54,7 @@ impl Components {
                 )
                 .expect("Component not registered")
                 .borrow(),
-            |x| x.as_any().downcast_ref::<SparseSet<T>>().unwrap(),
+            |x| x.0.as_any_ref().downcast_ref::<SparseSet<T>>().unwrap(),
         )
     }
 
@@ -61,7 +69,7 @@ impl Components {
                 )
                 .expect("Component not registered")
                 .borrow_mut(),
-            |x| x.as_any_mut().downcast_mut::<SparseSet<T>>().unwrap(),
+            |x| x.0.as_any_mut().downcast_mut::<SparseSet<T>>().unwrap(),
         )
     }
 
@@ -76,13 +84,13 @@ impl Components {
         for i in 0..COMPONENTS_MASK_SIZE {
             if entity_mask & (1 << i) != 0 {
                 let sparse_set = &mut self.columns[i];
-                sparse_set.get_mut().remove(entity_spatial_idx);
+                sparse_set.get_mut().0.remove(entity_spatial_idx);
             }
         }
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SparseSet<T> {
     dense: Vec<T>,
     sparse: Vec<Option<usize>>,
@@ -129,16 +137,27 @@ impl<T> SparseSet<T> {
     pub fn contains(&self, index: usize) -> bool {
         self.sparse.get(index).map(|i| i.is_some()).unwrap_or(false)
     }
+
+    pub fn iter(&self) -> impl Iterator<Item = (usize, &T)> + '_ {
+        self.sparse
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, &i)| i.map(|i| (idx, &self.dense[i])))
+    }
 }
 
-pub trait ComponentsColumn: Any {
-    fn as_any(&self) -> &dyn Any;
+pub trait ComponentsColumn {
+    fn as_any(self: Box<Self>) -> Box<dyn Any>;
+    fn as_any_ref(&self) -> &dyn Any;
     fn as_any_mut(&mut self) -> &mut dyn Any;
     fn remove(&mut self, index: usize);
 }
 
 impl<T: Any> ComponentsColumn for SparseSet<T> {
-    fn as_any(&self) -> &dyn Any {
+    fn as_any(self: Box<Self>) -> Box<dyn Any> {
+        self
+    }
+    fn as_any_ref(&self) -> &dyn Any {
         self
     }
     fn as_any_mut(&mut self) -> &mut dyn Any {
