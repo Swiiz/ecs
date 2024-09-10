@@ -39,7 +39,7 @@ fn main() {
 
     print_entities(&mut entities);
 
-    let unamed_entity = entities.get(&unamed_entity_id).unwrap();
+    let unamed_entity = entities.edit(unamed_entity_id).unwrap();
     print!(
         "Unamed entity age: {}",
         unamed_entity.get::<Age>().unwrap().0

@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 pub const COMPONENTS_MASK_SIZE: usize = 64;
 pub type ComponentsMask = u64;
 
+#[derive(Debug)]
 pub struct Components {
     component_masks: HashMap<TypeId, (usize, ComponentsMask)>,
     next_component_mask: ComponentsMask,
@@ -17,6 +18,12 @@ pub struct Components {
 }
 
 struct Column(Box<dyn ComponentsColumn>);
+
+impl std::fmt::Debug for Column {
+    fn fmt(&self, _: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        Ok(())
+    }
+}
 
 impl Components {
     pub fn new() -> Self {
@@ -92,7 +99,7 @@ impl Components {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SparseSet<T> {
-    dense: Vec<T>,
+    dense: Vec<(T, usize)>,
     sparse: Vec<Option<usize>>,
 }
 
@@ -111,7 +118,7 @@ impl<T> SparseSet<T> {
             if self.sparse.len() <= index {
                 self.sparse.resize(index + 1, None);
             }
-            self.dense.push(value);
+            self.dense.push((value, index));
             self.sparse[index] = Some(self.dense.len() - 1);
         }
     }
@@ -119,19 +126,35 @@ impl<T> SparseSet<T> {
     pub fn get(&self, index: usize) -> Option<&T> {
         self.sparse
             .get(index)
-            .and_then(|&i| i.map(|i| &self.dense[i]))
+            .map(|&i| self.dense.get(i.unwrap()).unwrap())
+            .map(|x| &x.0)
     }
 
     pub fn get_mut(&mut self, index: usize) -> Option<&mut T> {
         self.sparse
             .get(index)
-            .and_then(|&i| i.map(|i| &mut self.dense[i]))
+            .map(|&i| self.dense.get_mut(i.unwrap()).unwrap())
+            .map(|x| &mut x.0)
     }
 
     pub fn remove(&mut self, index: usize) -> Option<T> {
-        self.sparse
-            .get_mut(index)
-            .and_then(|i| i.take().map(|i| self.dense.remove(i)))
+        if let Some(&Some(i)) = self.sparse.get(index) {
+            self.dense
+                .last()
+                .map(|x| &x.1)
+                .copied()
+                .and_then(|lastd_idx| {
+                    if index != lastd_idx {
+                        let len = self.dense.len();
+                        self.dense.swap(i, len - 1);
+                        self.sparse[lastd_idx] = Some(i);
+                    }
+                    self.sparse[index] = None;
+                    self.dense.pop().map(|x| x.0)
+                })
+        } else {
+            None
+        }
     }
 
     pub fn contains(&self, index: usize) -> bool {
@@ -142,7 +165,7 @@ impl<T> SparseSet<T> {
         self.sparse
             .iter()
             .enumerate()
-            .filter_map(|(idx, &i)| i.map(|i| (idx, &self.dense[i])))
+            .filter_map(|(idx, &i)| i.map(|i| (idx, &self.dense[i].0)))
     }
 }
 

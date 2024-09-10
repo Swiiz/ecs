@@ -8,9 +8,11 @@ mod query;
 
 pub mod serde;
 
+use ::serde::{Deserialize, Serialize};
 pub use query::Query;
 use serde::{ComponentSelection, EcsState};
 
+#[derive(Debug)]
 pub struct Entities {
     pub(crate) entity_masks: Arena<ComponentsMask>,
     pub(crate) components: Components,
@@ -26,37 +28,78 @@ impl Entities {
 
     pub fn spawn(&mut self) -> EntityHandle {
         let id = self.entity_masks.insert(ComponentsMask::default());
-        self.get(&EntityId(id)).unwrap()
+        self.edit(EntityId(id)).unwrap()
     }
 
-    pub fn get(&mut self, id: &EntityId) -> Option<EntityHandle> {
-        if self.is_present(&id) {
-            Some(EntityHandle { id: *id, ecs: self })
+    pub fn edit(&mut self, id: EntityId) -> Option<EntityHandle> {
+        if self.is_present(id) {
+            Some(EntityHandle { id, ecs: self })
         } else {
             None
         }
     }
 
-    pub fn is_present(&self, entity: &EntityId) -> bool {
+    pub fn is_present(&self, entity: EntityId) -> bool {
         self.entity_masks.contains(entity.index())
     }
 
-    pub fn save<S: ComponentSelection>(&self) -> EcsState<S> {
+    pub fn save_entity<S: ComponentSelection>(&mut self, id: EntityId) -> S::EntityState {
+        S::save_entity(id, &mut self.components)
+    }
+
+    pub fn load_entity<S: ComponentSelection>(
+        &mut self,
+        entity_id: AliveEntityId,
+        state: S::EntityState,
+    ) -> EntityHandle {
+        let mut entity = self.spawn();
+        assert!(entity_id.0 == entity.id().spatial());
+        S::load_entity(&mut entity, state);
+        entity
+    }
+
+    pub fn save<S: ComponentSelection>(&mut self) -> EcsState<S> {
         EcsState {
             entity_masks: self.entity_masks.clone(),
-            components: S::save_columns(&self.components),
+            components: S::save_columns(&mut self.components),
         }
     }
 
     pub fn load<S: ComponentSelection>(state: EcsState<S>) -> Self {
+        let mut components = Components::new();
+
+        S::load_columns(&mut components, state.components);
+
         Self {
             entity_masks: state.entity_masks,
-            components: S::load_columns(state.components),
+            components,
         }
     }
 }
 
-#[derive(Clone, Copy)]
+/// /!\ Entity that is known to be alive, used for serialization and deserialization
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct AliveEntityId(usize);
+
+impl From<EntityId> for AliveEntityId {
+    fn from(id: EntityId) -> Self {
+        Self(id.spatial())
+    }
+}
+
+impl AliveEntityId {
+    pub fn validate(&self, entities: &Entities) -> EntityId {
+        EntityId(
+            entities
+                .entity_masks
+                .get_unknown_gen(self.0)
+                .expect("Entity not present! This should never happen")
+                .1,
+        )
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct EntityId(Index);
 
 impl EntityId {
@@ -106,9 +149,9 @@ impl<'a> EntityHandle<'a> {
         *self.mask_mut() &= !components.mask_of::<T>();
     }
 
-    pub fn despawn(&mut self, entity: &EntityId) {
-        if let Some(mask) = self.ecs.entity_masks.remove(entity.0) {
-            self.ecs.components.remove_all(mask, entity.spatial());
+    pub fn despawn(&mut self) {
+        if let Some(mask) = self.ecs.entity_masks.remove(self.id.index()) {
+            self.ecs.components.remove_all(mask, self.id.spatial());
         };
     }
 }
@@ -119,11 +162,12 @@ pub trait Entity {
     fn has<T: 'static>(&self) -> bool;
 
     fn get<T: 'static>(&self) -> Option<Ref<T>> {
-        self.has::<T>().then(|| {
-            Ref::map(self.ecs().components.borrow_storage_of::<T>(), |s| {
-                s.get(self.id().spatial()).unwrap()
+        self.has::<T>().then_some(
+            Ref::filter_map(self.ecs().components.borrow_storage_of::<T>(), |s| {
+                s.get(self.id().spatial())
             })
-        })
+            .ok()?,
+        )
     }
 
     fn get_mut<T: 'static>(&self) -> Option<RefMut<T>> {

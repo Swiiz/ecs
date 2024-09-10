@@ -2,7 +2,10 @@ use generational_arena::Arena;
 use impl_trait_for_tuples::impl_for_tuples;
 use serde::{de::DeserializeOwned, Serialize};
 
-use crate::components::{Components, ComponentsMask, SparseSet};
+use crate::{
+    components::{Components, ComponentsMask, SparseSet},
+    EntityHandle, EntityId,
+};
 
 //TODO: Add compression
 
@@ -12,10 +15,17 @@ pub struct EcsState<S: ComponentSelection> {
     pub components: S::Columns,
 }
 
+pub type EntityState<S> = <S as ComponentSelection>::EntityState;
+
 pub trait ComponentSelection {
     type Columns: Serialize + DeserializeOwned + Clone + 'static;
-    fn save_columns(components: &Components) -> Self::Columns;
-    fn load_columns(columns: Self::Columns) -> Components;
+    type EntityState: Serialize + DeserializeOwned + Clone + 'static;
+
+    fn save_columns(components: &mut Components) -> Self::Columns;
+    fn save_entity(id: EntityId, components: &mut Components) -> Self::EntityState;
+
+    fn load_columns(components: &mut Components, columns: Self::Columns);
+    fn load_entity(entity: &mut EntityHandle, state: Self::EntityState);
 }
 
 #[impl_for_tuples(16)]
@@ -25,13 +35,23 @@ impl ComponentSelection for Tuple {
 
     for_tuples!(type Columns = ( #( SparseSet<Tuple> ),* ); );
 
-    fn save_columns(components: &Components) -> Self::Columns {
+    fn save_columns(components: &mut Components) -> Self::Columns {
+        for_tuples!( #( components.lazy_register::<Tuple>(); )*  );
         for_tuples!( ( #( components.borrow_storage_of::<Tuple>().clone() ),* ) )
     }
 
-    fn load_columns(columns: Self::Columns) -> Components {
-        let mut components = Components::new();
-        for_tuples!(  #( components.insert_column::<Tuple>(columns.Tuple); )*  );
-        components
+    for_tuples!(type EntityState = ( #( Option<Tuple> ),* ); );
+
+    fn save_entity(id: EntityId, components: &mut Components) -> Self::EntityState {
+        for_tuples!( #( components.lazy_register::<Tuple>(); )*  );
+        for_tuples!( ( #( components.borrow_storage_of::<Tuple>().get(id.spatial()).cloned() ),* ) )
+    }
+
+    fn load_columns(components: &mut Components, columns: Self::Columns) {
+        for_tuples!(  #( components.insert_column::<Tuple>(columns.Tuple); )*  )
+    }
+
+    fn load_entity(entity: &mut EntityHandle, state: Self::EntityState) {
+        for_tuples!(  #( state.Tuple.map(|c| entity.set(c) );)* )
     }
 }
