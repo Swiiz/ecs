@@ -53,7 +53,7 @@ impl Entities {
         state: S::EntityState,
     ) -> EntityHandle {
         let mut entity = self.spawn();
-        assert!(entity_id.0 == entity.id().spatial());
+        assert!(entity_id.0 == entity.id().spatial(), "Ecs desync detected");
         S::load_entity(&mut entity, state);
         entity
     }
